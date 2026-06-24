@@ -1,6 +1,6 @@
 # useR! 2026
 
-This repository contains materials for the workshop at the [useR! 2026 conference](https://user2026.r-project.org/).
+This repository contains materials for the "*Introduction to spatial data science*" workshop at the [useR! 2026 conference](https://user2026.r-project.org/).
 
 # Introduction
 
