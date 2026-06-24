@@ -1,0 +1,331 @@
+---
+title: "Raster data analysis in R"
+author: "Krzysztof Dyba"
+format:
+  html:
+    toc: true
+    toc-title: " "
+    embed-resources: true
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+# load the package
+library("terra")
+```
+
+# Introduction
+
+In the `landsat` folder, there are 4 raster files with the `.tif` extension
+that show the Warsaw area. This data comes from the [Landsat 9](https://science.nasa.gov/mission/landsat/)
+satellite and represents selected ranges of the electromagnetic spectrum
+recorded by the sensor.
+
+| Band Number | Band Name                      | Wavelength (µm) |
+|-------------|--------------------------------|-----------------|
+| Band 2      | Blue                           | 0.45 – 0.51     |
+| Band 3      | Green                          | 0.53 – 0.59     |
+| Band 4      | Red                            | 0.64 – 0.67     |
+| Band 5      | Near Infrared (NIR)            | 0.85 – 0.88     |
+
+: Selected spectral bands from Landsat 9. {#tbl-landsat}
+
+The purpose of this analysis is to assess the state of vegetation in this area
+using simple thresholding and classification rules based on a spectral index.
+
+We will start by listing the files we want to load using the `list.files()`
+function. We need to specify the path to the folder and the file extension
+using regular expression (`pattern = "\\.TIF$"`). In addition, we use the
+`full.names` argument to return the full file paths.
+
+```{r}
+# list files from a directory
+files = list.files("landsat", pattern = "\\.TIF$", full.names = TRUE)
+files
+```
+
+Now that we have the files listed, we can load them using the `rast()` function.
+
+```{r}
+# load rasters
+landsat = rast(files)
+```
+
+In the next step, we will inspect the basic metadata.
+
+```{r}
+# print metadata
+landsat
+```
+
+For convenience, we can modify the default names of bands (layers) by referring
+to the `names` attribute.
+
+```{r}
+# rename the layers
+names(landsat) = c("Blue", "Green", "Red", "NIR")
+# names(landsat) = c("B02", "B03", "B04", "B05")
+```
+
+Obviously, we can visualize this data using the simple `plot()` function.
+By default, the viridis color palette is used. However, by using the `col`
+argument, we can use a different one, such as shades of gray from `gray.colors()`.
+For instance, let's display the NIR band -- we can select its name or index
+using square brackets.
+
+```{r}
+#| layout-ncol: 2
+
+plot(landsat[["NIR"]], main = "NIR Band")
+
+colors = gray.colors(n = 20) # define the custom color scheme
+plot(landsat[["NIR"]], main = "NIR Band", col = colors)
+```
+
+# Raster Operations
+
+## Statistical Summaries
+
+To calculate basic statistics, the easiest method is to use the `summary()`
+function, which by default performs calculations on a sample of 100,000 raster
+cells.
+
+```{r}
+#| warning: false
+
+summary(landsat)
+```
+
+The statistical values above are not entirely correct. The proper range for
+reflectance is from 0 to 1, where 0 indicates no reflection and 1 indicates
+full reflection. The reason for this is that satellite data is typically stored
+as integers rather than floating-point numbers, in order to reduce file size.
+
+## Calculations
+
+Therefore, we need to perform a simple scaling using scale factor ($0.0000275$)
+and offset ($-0.2$), according to the following formula:
+
+$$
+x = x * \text{scale factor} + \text{offset}
+$$
+
+Mathematical operations on rasters are performed in exactly the same way as on
+matrices. The formula will be automatically applied to all cells in the raster
+and all layers of the raster.
+
+```{r}
+# scaling values
+landsat = landsat * 0.0000275 - 0.2
+```
+
+Let's check the statistics based on all raster cells.
+
+```{r}
+#| warning: false
+
+summary(landsat, size = Inf)
+```
+
+We can see that some values still fall outside the expected range, i.e. below
+0 or above 1. These are outliers. There are several ways to remove them, but
+the most common is the `clamp()` function. It requires setting lower and
+upper threshold values, and depending on the `values` argument, outliers can
+either be overwritten with the threshold value (`values = TRUE`) or removed
+(`values = FALSE`). Typically, such values are removed, but if a large number
+of observations are lost, they are overwritten instead.
+
+```{r}
+# method 1 (overwrite)
+landsat = clamp(landsat, lower = 0, upper = 1, values = TRUE)
+```
+
+```{r}
+#| eval: false
+
+# method 2 (remove)
+# landsat = clamp(landsat, lower = 0, upper = 1, values = FALSE)
+```
+
+## Multiband Visualization
+
+In addition to single-layer visualizations, we can create more advanced
+compositions consisting of three bands. For instance, a composition in
+natural colors that consists of red, green, and blue bands. The `plotRGB()`
+function is used for this, and we need to define the appropriate bands as
+its arguments. In practice, it is usually necessary to stretch the contrast,
+which can be done by setting the `stretch = "lin"` argument.
+
+```{r}
+# RGB composition
+plotRGB(landsat, 3, 2, 1, stretch = "lin")
+```
+
+Using other spectral bands, we can create compositions in false colors.
+
+## Raster Algebra
+
+Let’s now proceed to assess vegetation condition. To do this, we will use a
+spectral index called the normalized difference vegetation index (NDVI).
+It is a simple indicator based on the red and near-infrared bands and it
+is used to measure plant health and biomass levels. Its formula is as follows:
+
+$$
+\text{NDVI} = \frac{\text{NIR} - \text{Red}}{\text{NIR} + \text{Red}}
+$$
+
+Let's write this formula as a function.
+
+```{r}
+# define a function to calculate NDVI
+calculate_ndvi = function(nir, red) {
+  ndvi = (nir - red) / (nir + red)
+  return(ndvi)
+}
+```
+
+Next, let's call this function by specifying the appropriate bands.
+
+```{r}
+ndvi = calculate_ndvi(landsat[["NIR"]], landsat[["Red"]])
+```
+
+We obtained a result that falls within the range of -1 to 1. The higher the
+value, the healthier the plants and the higher the biomass level. Low values
+around 0 indicate bare soil, artificial surfaces, or water bodies.
+
+Let's now create visualizations using a custom color palette ranging from
+red (low values) to green (high values). We can generate such a palette with
+the `colorRampPalette()` function and specifying the main colors and the
+number of interpolated intervals between them.
+
+```{r}
+# divergent color palette
+ndvi_colors = colorRampPalette(c("#8B0000", "#F5DEB3", "#006400"))
+plot(ndvi, main = "NDVI", col = ndvi_colors(20), range = c(-1, 1))
+```
+
+Forests and croplands are marked in green, while urban areas and bodies of
+water are marked in yellow.
+
+## Thresholding
+
+We can use a threshold on the NDVI raster to create a simple binary mask
+showing areas covered by vegetation. We will use 0.4 as the threshold value.
+
+```{r}
+veg = ndvi > 0.4
+plot(veg, col = c("white", "darkgreen"), main = "Vegetation")
+```
+
+## Simple Classification
+
+A more complex approach is based on classification rules. To reclassify raster
+values based on conditions, we use the `classify()` function. It requires
+a matrix consisting of three columns. The first and second columns contain
+the starting and ending range of raster values, and the third column contains
+the new category value (ID).
+
+```{r}
+# reclassification matrix
+rcl = matrix(
+  c(-1.0, 0.2, 1,   # Non-vegetated / Water
+     0.2, 0.4, 2,   # Sparse vegetation
+     0.4, 0.6, 3,   # Moderate vegetation
+     0.6, 1.0, 4),  # Dense vegetation
+  ncol = 3, byrow = TRUE
+)
+```
+
+```{r}
+# raster value reclassification
+ndvi_class = classify(ndvi, rcl)
+```
+
+The result is a new raster consisting of IDs from 1 to 4. Let's replace these
+IDs with category names. We need to create a data frame with two columns.
+The first column contains IDs, and the second contains labels. Then, using
+the `levels()` function, we can assign these labels to their corresponding IDs.
+
+```{r}
+df = data.frame(
+  id = unique(ndvi_class),
+  labels = c("Non-vegetated", "Sparse", "Moderate", "Dense")
+)
+
+# assign labels to IDs 
+levels(ndvi_class) = df
+```
+
+Let's take a look at how these categories look on the map.
+
+```{r}
+col_class = c("#e2e8f0", "#fefae0", "#78c679", "#065f46")
+plot(ndvi_class, col = col_class)
+```
+
+We can also count the number of occurrences of each category using the `freq()`
+function.
+
+```{r}
+# frequency table
+freq(ndvi_class, bylayer = FALSE)
+```
+
+## Focal Operations
+
+The created map shows a "salt-and-pepper" effect, in which incorrect categories
+appear on homogeneous areas. This is due to the limitations of remote sensing
+measurements. This can be corrected by using focal operations, which analyze
+the nearest neighborhood of cells. In our case, we can use a modal filter in
+`focal()` function that selects the most frequently appearing categories within
+a moving window of a specified size. Let's assume the window size is 5 x 5 cells.
+
+```{r}
+# map smoothing using modal filter
+ndvi_class_smooth = focal(ndvi_class, w = 5, fun = "modal", expand = TRUE)
+```
+
+Let's look at the smoothed map.
+
+```{r}
+plot(ndvi_class_smooth, col = col_class)
+```
+
+## Exporting Results
+
+We can save the results of our analysis as a raster using the `writeRaster()`
+function and specifying the save path along with the file extension.
+GeoTIFF files are saved with LZW compression by default.
+
+```{r}
+#| eval: false
+
+# save raster to disk
+writeRaster(ndvi, "NDVI.tif")
+```
+
+For a raster with categories, we can define the data type as byte
+(`datatype = "INT1U"`) instead of a floating point number, which will
+significantly reduce the disk space occupied.
+
+```{r}
+#| eval: false
+
+writeRaster(ndvi_class, "NDVI_class.tif", datatype = "INT1U")
+```
+
+# Task
+
+1. Create a false color composition consisting of the following bands in this
+order: "NIR", "Red", "Green".
+2. Calculate the normalized difference water index (NDWI) for water detection.
+Next, use thresholding to delineate the water areas and save the result to
+disk in TIF format. To calculate NDWI, use the following formula:
+
+$$
+\text{NDWI} = \frac{\text{Green} - \text{NIR}}{\text{Green} + \text{NIR}}
+$$
+
