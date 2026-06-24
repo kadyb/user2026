@@ -1,4 +1,4 @@
-# useR! 2026 conference
+# useR! 2026
 
 This repository contains materials for the workshop at the [useR! 2026 conference](https://user2026.r-project.org/).
 
