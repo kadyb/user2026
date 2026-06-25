@@ -86,7 +86,7 @@ plot(landsat[["NIR"]], main = "NIR Band", col = colors)
 
 # Raster Operations
 
-## Statistical Summaries
+## Statistical Summary
 
 To calculate basic statistics, the easiest method is to use the `summary()`
 function, which by default performs calculations on a sample of 100,000 raster
@@ -197,6 +197,7 @@ Let's write this formula as a function.
 # define a function to calculate NDVI
 calculate_ndvi = function(nir, red) {
   ndvi = (nir - red) / (nir + red)
+  names(ndvi) = "NDVI"
   return(ndvi)
 }
 ```
@@ -335,7 +336,7 @@ on disk.
 writeRaster(ndvi_class, "NDVI_class.tif", datatype = "INT1U")
 ```
 
-# Task
+# Exercise
 
 1. Create a false color composition consisting of the following bands in this
 order: "NIR", "Red", "Green".
