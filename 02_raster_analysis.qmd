@@ -279,7 +279,7 @@ Let's take a look at how these categories look on the map.
 
 ```{r}
 col_class = c("#e2e8f0", "#fefae0", "#78c679", "#065f46")
-plot(ndvi_class, col = col_class)
+plot(ndvi_class, col = col_class, main = "Vegetation Density")
 ```
 
 We can also count the number of occurrences of each category using the `freq()`
@@ -309,7 +309,7 @@ ndvi_class_smooth = focal(ndvi_class, w = 5, fun = "modal", expand = TRUE)
 Let's look at the smoothed map.
 
 ```{r}
-plot(ndvi_class_smooth, col = col_class)
+plot(ndvi_class_smooth, col = col_class, main = "Vegetation Density")
 ```
 
 ## Exporting Results
