@@ -18,9 +18,9 @@ library("terra")
 
 # Introduction
 
-In the `landsat` folder, there are 4 raster files with the `.tif` extension
-that show the Warsaw area. This data comes from the [Landsat 9](https://science.nasa.gov/mission/landsat/)
-satellite and represents selected ranges of the electromagnetic spectrum
+In the `landsat` folder, there are 4 raster files with the `.TIF` extension
+that show the Warsaw area. These data come from the [Landsat 9](https://science.nasa.gov/mission/landsat/)
+satellite and represent selected ranges of the electromagnetic spectrum
 recorded by the sensor.
 
 | Band Number | Band Name                      | Wavelength (µm) |
@@ -37,7 +37,7 @@ using simple thresholding and classification rules based on a spectral index.
 
 We will start by listing the files we want to load using the `list.files()`
 function. We need to specify the path to the folder and the file extension
-using regular expression (`pattern = "\\.TIF$"`). In addition, we use the
+using a regular expression (`pattern = "\\.TIF$"`). In addition, we use the
 `full.names` argument to return the full file paths.
 
 ```{r}
@@ -70,10 +70,10 @@ names(landsat) = c("Blue", "Green", "Red", "NIR")
 ```
 
 Obviously, we can visualize this data using the simple `plot()` function.
-By default, the viridis color palette is used. However, by using the `col`
-argument, we can use a different one, such as shades of gray from `gray.colors()`.
-For instance, let's display the NIR band -- we can select its name or index
-using square brackets.
+By default, the viridis color palette is used. However, we can specify a
+different palette using the `col` argument, such as shades of gray from
+`gray.colors()`. For instance, let's display the NIR band -- we can select
+it by name or index using double square brackets.
 
 ```{r}
 #| layout-ncol: 2
@@ -98,18 +98,21 @@ cells.
 summary(landsat)
 ```
 
-The statistical values above are not entirely correct. The proper range for
-reflectance is from 0 to 1, where 0 indicates no reflection and 1 indicates
-full reflection. The reason for this is that satellite data is typically stored
-as integers rather than floating-point numbers, in order to reduce file size.
+The statistical values above do not reflect actual physical reflectance values.
+The proper range for reflectance is from 0 to 1, where 0 indicates no reflection
+and 1 indicates full reflection. The reason for this is that satellite data is
+typically stored as 16-bit unsigned integers (values ranging from 0 to 65,535)
+rather than floating-point numbers, in order to reduce file size.
 
-## Calculations
+## Data Preprocessing
 
-Therefore, we need to perform a simple scaling using scale factor ($0.0000275$)
-and offset ($-0.2$), according to the following formula:
+Therefore, we must apply a scaling factor and an offset according to the
+appropriate formula. Depending on the product or sensor, different formulas
+and parameter values are used. For our dataset, the scaling factor is $0.0000275$
+and the offset is $-0.2$. The formula is as follows:
 
 $$
-x = x * \text{scale factor} + \text{offset}
+x' = x * \text{scale factor} + \text{offset}
 $$
 
 Mathematical operations on rasters are performed in exactly the same way as on
@@ -118,10 +121,13 @@ and all layers of the raster.
 
 ```{r}
 # scaling values
-landsat = landsat * 0.0000275 - 0.2
+scale_factor = 0.0000275
+offset = -0.2
+landsat = landsat * scale_factor + offset
 ```
 
-Let's check the statistics based on all raster cells.
+Let's check the statistics based on all raster cells (note that for large
+rasters, processing all cells may be slow and memory intensive).
 
 ```{r}
 #| warning: false
@@ -129,8 +135,9 @@ Let's check the statistics based on all raster cells.
 summary(landsat, size = Inf)
 ```
 
-We can see that some values still fall outside the expected range, i.e. below
-0 or above 1. These are outliers. There are several ways to remove them, but
+We can see that some values still fall outside the expected reflectance range
+of 0 to 1. They may result from atmospheric correction artifacts, sensor noise,
+measurement errors or outliers. There are several ways to handle them, but
 the most common is the `clamp()` function. It requires setting lower and
 upper threshold values, and depending on the `values` argument, outliers can
 either be overwritten with the threshold value (`values = TRUE`) or removed
@@ -152,25 +159,33 @@ landsat = clamp(landsat, lower = 0, upper = 1, values = TRUE)
 ## Multiband Visualization
 
 In addition to single-layer visualizations, we can create more advanced
-compositions consisting of three bands. For instance, a composition in
-natural colors that consists of red, green, and blue bands. The `plotRGB()`
+compositions consisting of three bands. For instance, a natural color
+composition consists of the red, green, and blue bands. The `plotRGB()`
 function is used for this, and we need to define the appropriate bands as
-its arguments. In practice, it is usually necessary to stretch the contrast,
-which can be done by setting the `stretch = "lin"` argument.
+its arguments. Since red is the third layer, green is the second, and blue
+is the first, we pass the values 3, 2, 1 as arguments to match these bands.
+In practice, it is usually necessary to stretch the contrast, which can be
+done by setting the `stretch = "lin"` argument.
 
 ```{r}
 # RGB composition
-plotRGB(landsat, 3, 2, 1, stretch = "lin")
+plotRGB(landsat, r = 3, g = 2, b = 1, stretch = "lin")
 ```
 
 Using other spectral bands, we can create compositions in false colors.
+For example, a composition of NIR, Red, and Green bands highlights healthy
+vegetation in bright red (due to its high NIR reflectance). Meanwhile, water
+bodies appear black because they absorb NIR light, and built-up areas appear
+as light blue or gray. This makes it much easier to distinguish different
+land cover types than in natural colors.
 
-## Raster Algebra
+## Vegetation Index
 
-Let’s now proceed to assess vegetation condition. To do this, we will use a
-spectral index called the normalized difference vegetation index (NDVI).
-It is a simple indicator based on the red and near-infrared bands and it
-is used to measure plant health and biomass levels. Its formula is as follows:
+Let’s now proceed to assess the condition of the vegetation. To do this,
+we will use a spectral index called the normalized difference vegetation
+index (NDVI). It is a simple indicator based on the red and near-infrared
+bands and it is used to indirectly measure plant health and biomass levels.
+Its formula is as follows:
 
 $$
 \text{NDVI} = \frac{\text{NIR} - \text{Red}}{\text{NIR} + \text{Red}}
@@ -192,13 +207,13 @@ Next, let's call this function by specifying the appropriate bands.
 ndvi = calculate_ndvi(landsat[["NIR"]], landsat[["Red"]])
 ```
 
-We obtained a result that falls within the range of -1 to 1. The higher the
-value, the healthier the plants and the higher the biomass level. Low values
-around 0 indicate bare soil, artificial surfaces, or water bodies.
+We obtained a result that falls within the range of -1 to 1. The higher values
+often correspond to denser or more vigorous vegetation, while values near or
+below 0 may indicate bare soil, artificial surfaces, or water bodies.
 
 Let's now create visualizations using a custom color palette ranging from
-red (low values) to green (high values). We can generate such a palette with
-the `colorRampPalette()` function and specifying the main colors and the
+red (low values) to green (high values). We can generate this palette by
+passing the main colors to the `colorRampPalette()` function and the
 number of interpolated intervals between them.
 
 ```{r}
@@ -251,7 +266,7 @@ the `levels()` function, we can assign these labels to their corresponding IDs.
 
 ```{r}
 df = data.frame(
-  id = unique(ndvi_class),
+  id = rcl[, 3],
   labels = c("Non-vegetated", "Sparse", "Moderate", "Dense")
 )
 
@@ -277,11 +292,13 @@ freq(ndvi_class, bylayer = FALSE)
 ## Focal Operations
 
 The created map shows a "salt-and-pepper" effect, in which incorrect categories
-appear on homogeneous areas. This is due to the limitations of remote sensing
-measurements. This can be corrected by using focal operations, which analyze
-the nearest neighborhood of cells. In our case, we can use a modal filter in
-`focal()` function that selects the most frequently appearing categories within
-a moving window of a specified size. Let's assume the window size is 5 x 5 cells.
+appear within homogeneous areas. This occurs because classification is applied
+independently to each cell without considering spatial context, making it
+sensitive to local spectral variability. This can be corrected by using focal
+operations, which analyze the local neighborhood of cells. In our case, we
+can use a modal filter in the `focal()` function to select the most frequently
+appearing categories within a moving window of a specified size. Let's assume
+the window size is 5 x 5 cells (`w = 5`).
 
 ```{r}
 # map smoothing using modal filter
@@ -307,9 +324,10 @@ GeoTIFF files are saved with LZW compression by default.
 writeRaster(ndvi, "NDVI.tif")
 ```
 
-For a raster with categories, we can define the data type as byte
-(`datatype = "INT1U"`) instead of a floating point number, which will
-significantly reduce the disk space occupied.
+For a raster with categories, we can define the data type as an 8-bit unsigned
+integer (`datatype = "INT1U"`) instead of a floating-point number. Since our
+classes only range from 1 to 4, this significantly reduces the file size
+on disk.
 
 ```{r}
 #| eval: false
