@@ -18,7 +18,7 @@ library("terra")
 
 # Introduction
 
-In the `landsat` folder, there are 4 raster files with the `.TIF` extension
+In the `data/landsat` folder, there are 4 raster files with the `.TIF` extension
 that show the Warsaw area. These data come from the [Landsat 9](https://science.nasa.gov/mission/landsat/)
 satellite and represent selected ranges of the electromagnetic spectrum
 recorded by the sensor.
@@ -42,7 +42,7 @@ using a regular expression (`pattern = "\\.TIF$"`). In addition, we use the
 
 ```{r}
 # list files from a directory
-files = list.files("landsat", pattern = "\\.TIF$", full.names = TRUE)
+files = list.files("data/landsat", pattern = "\\.TIF$", full.names = TRUE)
 files
 ```
 
