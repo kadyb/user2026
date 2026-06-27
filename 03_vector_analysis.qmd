@@ -348,5 +348,6 @@ writeVector(buffers_300, "buffers_300.gpkg")
 # Exercise
 
 1. For each district, calculate its centroid. Then, for each centroid, find
-the nearest park and calculate the distances.
-
+the nearest park and calculate the pairwise distances. To the layer with
+districts, add a column containing the name of the nearest park and the
+distance to it. Save the result to disk as a geopackage.
