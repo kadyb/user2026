@@ -1,0 +1,242 @@
+---
+title: "Vector data analysis in R"
+author: "Krzysztof Dyba"
+format:
+  html:
+    toc: true
+    toc-title: " "
+    embed-resources: true
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+# load the package
+library("terra")
+
+# prevent scientific notation
+options(scipen = 8)
+```
+
+# Introduction
+
+In the `data` folder, there are two vector files with the `.gpkg` extension
+(*geopackage*). They represent the districts of Warsaw and parks as polygon
+objects. The data was downloaded from [OpenStreetMap](https://www.openstreetmap.org/)
+using the [osmdata](https://github.com/ropensci/osmdata) package. The purpose
+of this analysis is to identify the accessibility of parks in the urban
+environment.
+
+Let's start by loading these two files (`districts.gpkg` and `parks.gpkg`)
+using the `vect()` function. We must specify the paths to these files in
+the function.
+
+```{r}
+# load vector layer
+districts = vect("data/districts.gpkg")
+districts
+```
+
+We can access the `name` attribute using the dollar sign (`districts$name`),
+which returns a vector, or using double square brackets (`districts[["name"]]`),
+which returns a data frame.
+
+```{r}
+# names of districts in Warsaw
+districts$name
+```
+
+Now let's load the parks.
+
+```{r}
+# load vector layer
+parks = vect("data/parks.gpkg")
+parks
+```
+
+After loading vector data, it is good practice to check that the geometry is
+valid. The `is.valid()` function is designed for this purpose. If a layer
+consists of multiple objects, it is advisable to use the additional `all()`
+function, which returns whether the geometries of all objects are valid.
+If the geometry is incorrect, you can try to fix it using the `makeValid()`
+function, although this does not always work.
+
+```{r}
+# check geometry validity
+all(is.valid(districts))
+all(is.valid(parks))
+```
+
+For simple visualizations, we can use the `plot()` function. If we want to
+overlay several layers, we must use the `add = TRUE` argument. The first layer
+is displayed as the base layer, and subsequent layers are added on top of it.
+
+```{r}
+plot(districts, main = "Parks in Warsaw")
+plot(parks, add = TRUE, col = "darkgreen")
+```
+
+The `parks` object contains some park names. Let's check how many parks have
+no name (`NA`). We can check for missing values using the `is.na()` function
+on the `name` attribute. Then, we can count the occurrences using the `table()`
+function.
+
+```{r}
+# is park name missing?
+table(is.na(parks$name))
+```
+
+# Vector Operations
+
+## Polygon Statistics
+
+Let's calculate the area and perimeter of polygons. The `expanse()` function
+is for calculating area, while the `perim()` function is for calculating
+perimeter. For area, we can specify the unit of the result (the `unit` argument).
+
+```{r}
+# calculate the area
+parks$area_m2 = expanse(parks, unit = "m")
+summary(parks$area_m2)
+```
+
+```{r}
+# calculate the perimeter
+parks$perim = perim(parks)
+summary(parks$perim)
+```
+
+Now that we have the results, we can sort the objects from largest to smallest
+area. Objects of the `SpatVector` class behave similarly to data frames, so
+we can use the `order()` function to sort them.
+
+```{r}
+# sort by area
+largest_parks = parks[order(parks$area_m2, decreasing = TRUE), ]
+```
+
+We can display the results as a classic data frame after converting them using
+`as.data.frame()` function.
+
+```{r}
+# convect SpatVector to data frame
+largest_parks = as.data.frame(largest_parks)
+head(largest_parks)
+```
+
+In the further part of the analysis, let’s exclude small parks with an area of
+less than 2,000 $m^2$. We need to use square brackets with the appropriate
+condition on the `area_m2` attribute.
+
+```{r}
+# data filtering
+parks_clean = parks[parks$area_m2 > 2000]
+```
+
+## Spatial Relationships
+
+Based on the map, we can conclude that the spatial distribution of parks is not
+uniform and that some parks are located outside the administrative boundaries
+of Warsaw. Spatial relationships define how objects are related to each other
+in terms of location, distance, and interaction in space.
+
+So let's check which parks are located in specific districts. To do this, we
+need to use the `relate()` function, which will check the selected relationship
+between all objects. The result will be a matrix of logical values. The relation
+we are interested in is `intersects`.
+
+```{r}
+# check if objects intersect
+intersect_mat = relate(districts, parks_clean, relation = "intersects")
+# View(intersect_mat)
+```
+
+Next, for each district, we can count the total number of parks. The districts
+are defined in rows, so we need to use the `rowSums()` function.
+
+```{r}
+stats = data.frame(name = districts$name, count = rowSums(intersect_mat)) 
+head(stats)
+```
+
+## Availability Analysis
+
+```{r}
+buffers_300 = buffer(parks_clean, width = 300)
+buffers_1000 = buffer(parks_clean, width = 1000)
+```
+
+```{r}
+buffers_300 = aggregate(buffers_300)
+buffers_1000 = aggregate(buffers_1000)
+```
+
+```{r}
+buffers_300 = crop(buffers_300, districts)
+buffers_1000 = crop(buffers_1000, districts)
+```
+
+```{r}
+city_area = sum(expanse(districts))
+
+stats = data.frame(
+  threshold = c("300 m", "1000 m"),
+  covered_area_m2 = c(expanse(buffers_300), expanse(buffers_1000))
+)
+stats$pct_covered = stats$covered_area_m2 / city_area * 100
+
+stats
+```
+
+```{r}
+no_access = erase(aggregate(districts), buffers_1000)
+```
+
+```{r}
+expanse(no_access) / city_area * 100
+```
+
+## Proximity Analysis
+
+```{r}
+pt = vect(cbind(21.007, 52.222), crs = "EPSG:4326")
+```
+
+```{r}
+idx = nearby(pt, parks_clean, k = 1, centroids = TRUE)[, 2]
+```
+
+```{r}
+distance(pt, parks_clean[idx, ], unit = "m")
+```
+
+```{r}
+cent = centroids(parks_clean[idx, ])
+```
+
+```{r}
+crds(cent)
+```
+
+```{r}
+plot(aggregate(districts), legend = FALSE)
+plot(pt, add = TRUE, col = "red")
+plot(cent, add = TRUE, col = "darkgreen")
+add_legend("topright", legend = c("Park", "Faculty"), pch = 19,
+           col = c("darkgreen", "red"))
+```
+
+## Exporting Results
+
+```{r}
+# project()
+# writeVector()
+```
+
+# Exercise
+
+1. For each district, calculate its centroid. Then, for each centroid, find
+the nearest park and calculate the distances.
+
+
