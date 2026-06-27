@@ -23,7 +23,7 @@ options(scipen = 8)
 
 In the `data` folder, there are two vector files with the `.gpkg` extension
 (*geopackage*). They represent the districts of Warsaw and parks as polygon
-objects. The data was downloaded from [OpenStreetMap](https://www.openstreetmap.org/)
+objects. The data were downloaded from [OpenStreetMap](https://www.openstreetmap.org/)
 using the [osmdata](https://github.com/ropensci/osmdata) package. The purpose
 of this analysis is to identify the accessibility of parks in the urban
 environment.
@@ -59,7 +59,7 @@ After loading vector data, it is good practice to check that the geometry is
 valid. The `is.valid()` function is designed for this purpose. If a layer
 consists of multiple objects, it is advisable to use the additional `all()`
 function, which returns whether the geometries of all objects are valid.
-If the geometry is incorrect, you can try to fix it using the `makeValid()`
+If the geometry is invalid, you can try to fix it using the `makeValid()`
 function, although this does not always work.
 
 ```{r}
@@ -103,8 +103,8 @@ summary(parks$area_m2)
 
 ```{r}
 # calculate the perimeter
-parks$perim = perim(parks)
-summary(parks$perim)
+parks$perim_m = perim(parks)
+summary(parks$perim_m)
 ```
 
 Now that we have the results, we can sort the objects from largest to smallest
@@ -120,13 +120,13 @@ We can display the results as a classic data frame after converting them using
 `as.data.frame()` function.
 
 ```{r}
-# convect SpatVector to data frame
+# convert SpatVector to data frame
 largest_parks = as.data.frame(largest_parks)
 head(largest_parks)
 ```
 
-In the further part of the analysis, let’s exclude small parks with an area of
-less than 2,000 $m^2$. We need to use square brackets with the appropriate
+In the following part of the analysis, let’s exclude small parks with an area
+of less than 2,000 $m^2$. We need to use square brackets with the appropriate
 condition on the `area_m2` attribute.
 
 ```{r}
@@ -143,8 +143,8 @@ in terms of location, distance, and interaction in space.
 
 So let's check which parks are located in specific districts. To do this, we
 need to use the `relate()` function, which will check the selected relationship
-between all objects. The result will be a matrix of logical values. The relation
-we are interested in is `intersects`.
+between all objects. The result will be a matrix of logical values. The
+relationship we are interested in is `intersects`.
 
 ```{r}
 # check if objects intersect
@@ -157,9 +157,12 @@ are defined in rows, so we need to use the `rowSums()` function.
 
 ```{r}
 # count parks by districts
-stats = data.frame(name = districts$name, count = rowSums(intersect_mat)) 
-head(stats)
+district_stats = data.frame(name = districts$name, count = rowSums(intersect_mat)) 
+head(district_stats)
 ```
+
+Note that parks intersecting each district are counted. If a park is located
+in two districts, it will be included in both.
 
 ## Availability Analysis
 
@@ -172,8 +175,10 @@ minutes).
 To perform this analysis, we need to use buffers. A buffer is a zone of a
 specified width created around a selected geographic feature (point, line,
 or polygon). This allows us to determine what lies within a specified range
-of the location of interest. To create the buffer, we will use the `buffer()`
-function and specify the range in meters (the `width` argument).
+of the location of interest. However, this distance is measured in a straight
+line (it does not show the real walking distance along the street network).
+To create the buffer, we will use the `buffer()` function and specify the
+range in meters (the `width` argument).
 
 ```{r}
 # generate buffers
@@ -182,8 +187,8 @@ buffers_1000 = buffer(parks_clean, width = 1000)
 ```
 
 We get 383 buffers (the same number as the number of input objects). These
-buffers largely overlap. Therefore, we can merge them using the `aggregate()`
-function.
+buffers largely overlap. Therefore, we can dissolve them into a single
+(multi)polygon using the `aggregate()` function.
 
 ```{r}
 # combine overlapping geometries
@@ -192,10 +197,10 @@ buffers_1000 = aggregate(buffers_1000)
 ```
 
 Some of the parks and their buffers extend beyond the city boundaries. We can
-crop their extent using the `crop()` function.
+clip them exactly to the city boundaries using the `crop()` function.
 
 ```{r}
-# crop buffers to the city boundary
+# clip buffers to the city boundary
 buffers_300 = crop(buffers_300, districts)
 buffers_1000 = crop(buffers_1000, districts)
 ```
@@ -217,16 +222,16 @@ area of the entire city as a percentage.
 city_area = sum(expanse(districts))
 
 # buffer area
-stats = data.frame(
+coverage_stats = data.frame(
   threshold = c("300 m", "1000 m"),
   covered_area_m2 = c(expanse(buffers_300), expanse(buffers_1000))
 )
-stats$pct_covered = stats$covered_area_m2 / city_area * 100
+coverage_stats$pct_covered = coverage_stats$covered_area_m2 / city_area * 100
 
-stats
+coverage_stats
 ```
 
-Finally, we can identify the areas where access to parks is more difficult
+We can also identify the areas where access to parks is more difficult
 (distances greater than 1,000 m). We can do this by subtracting two vector
 layers using the `erase()` function.
 
@@ -261,13 +266,14 @@ pt = cbind(21.007, 52.222)
 pt = vect(pt, crs = "EPSG:4326")
 ```
 
-To find the nearest park we will use the `nearby()` function, which searches
+To find the nearest park, we will use the `nearby()` function, which searches
 for `k` nearest neighbors (default 1). The result is a matrix containing the
 indices of the nearest objects.
 
 ```{r}
 # find the nearest park
-idx = nearby(pt, parks_clean)[, 2]
+idx = nearby(pt, parks_clean, centroids = FALSE)
+idx = idx[, 2]
 ```
 
 Next, using the `distance()` function, we can calculate the distance between
@@ -278,13 +284,15 @@ the faculty and this park. By default, the distance is returned in meters.
 distance(pt, parks_clean[idx, ], unit = "m")
 ```
 
-The distance between the faculty and the nearest park is 411 meters.
+The distance between the faculty and the nearest park is ~411 meters.
 
-In the documentation for the `nearby()` function, you may have noticed that
-for polygons, centroids are used by default for distance calculations.
-A centroid is the geometric center of a spatial object, represented as a single
-point. Therefore, the difference in distance to the boundary of the polygon
-and to its centroid will be different.
+In the `nearby()` function, you may have noticed that we used the `centroids`
+argument set to `FALSE`. By default, it is set to `TRUE`, which means that the
+centroid will be used to calculate distances for polygons. A centroid is the
+geometric center of a spatial object, represented as a single point. Therefore,
+the difference in distance to the boundary of the polygon and to its centroid
+will be different. In our examples, we calculated the distance to the polygon
+boundary.
 
 The `centroids()` function is used to calculate centroids. Let’s find out where
 the centroid of the selected park is located.
@@ -310,12 +318,12 @@ crds(cent)
 
 ## Reproject 
 
-We can transform (reproject) the coordinate system, which can be done using
-the `project()` function. Simply specify the target coordinate system,
-preferably by providing the EPSG code. A list of codes for specific areas
-based on the map can be found on the [CRS Explorer](https://crs-explorer.proj.org/)
-website. In our example, we will use the *Polish National Geodetic Coordinate
-System 1992* as the target coordinate system, whose code is `EPSG:2180`.
+We can transform (reproject) the coordinate system using the `project()` function.
+Simply specify the target coordinate system, preferably by providing the EPSG
+code. A list of codes for specific areas based on the map can be found on the
+[CRS Explorer](https://crs-explorer.proj.org/) website. In our example, we will
+use the *Polish National Geodetic Coordinate System 1992* as the target
+coordinate system, whose code is `EPSG:2180`.
 
 ```{r}
 # reproject CRS
@@ -327,8 +335,8 @@ After the above transformation, the coordinates are now expressed in meters
 
 ## Exporting Results
 
-Let's export the results to a vector file on the disk. The most common format
-is geopackage (`.gpkg`). The `writeVector()` function is needed to save the data.
+Let's export the results to a vector file to disk. The most common format is
+geopackage (`.gpkg`). The `writeVector()` function is needed to save the data.
 
 ```{r}
 #| eval: false
