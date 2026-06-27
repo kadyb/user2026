@@ -131,7 +131,7 @@ condition on the `area_m2` attribute.
 
 ```{r}
 # data filtering
-parks_clean = parks[parks$area_m2 > 2000]
+parks_clean = parks[parks$area_m2 > 2000, ]
 ```
 
 ## Spatial Relationships
@@ -156,30 +156,67 @@ Next, for each district, we can count the total number of parks. The districts
 are defined in rows, so we need to use the `rowSums()` function.
 
 ```{r}
+# count parks by districts
 stats = data.frame(name = districts$name, count = rowSums(intersect_mat)) 
 head(stats)
 ```
 
 ## Availability Analysis
 
+Let’s now assess the accessibility of parks. We can consider two scenarios:
+
+1. Parks with good accessibility within 300 m (average walking time ~4 minutes).
+2. Parks with moderate accessibility within 1000 m (average walking time ~15
+minutes).
+
+To perform this analysis, we need to use buffers. A buffer is a zone of a
+specified width created around a selected geographic feature (point, line,
+or polygon). This allows us to determine what lies within a specified range
+of the location of interest. To create the buffer, we will use the `buffer()`
+function and specify the range in meters (the `width` argument).
+
 ```{r}
+# generate buffers
 buffers_300 = buffer(parks_clean, width = 300)
 buffers_1000 = buffer(parks_clean, width = 1000)
 ```
 
+We get 383 buffers (the same number as the number of input objects). These
+buffers largely overlap. Therefore, we can merge them using the `aggregate()`
+function.
+
 ```{r}
+# combine overlapping geometries
 buffers_300 = aggregate(buffers_300)
 buffers_1000 = aggregate(buffers_1000)
 ```
 
+Some of the parks and their buffers extend beyond the city boundaries. We can
+crop their extent using the `crop()` function.
+
 ```{r}
+# crop buffers to the city boundary
 buffers_300 = crop(buffers_300, districts)
 buffers_1000 = crop(buffers_1000, districts)
 ```
 
 ```{r}
+plot(districts, main = "Park Accessibility", border = NA, legend = FALSE)
+plot(buffers_1000, col = "lightblue", border = NA, add = TRUE)
+plot(buffers_300, col = "darkblue", border = NA, add = TRUE)
+plot(districts, lwd = 2, add = TRUE)
+add_legend("topright", legend = c("4 min", "15 min"), pch = 15,
+           col = c("darkblue", "lightblue"))
+```
+
+We can calculate the total area covered by these buffers and the ratio to the
+area of the entire city as a percentage.
+
+```{r}
+# the total area of the city
 city_area = sum(expanse(districts))
 
+# buffer area
 stats = data.frame(
   threshold = c("300 m", "1000 m"),
   covered_area_m2 = c(expanse(buffers_300), expanse(buffers_1000))
@@ -189,54 +226,119 @@ stats$pct_covered = stats$covered_area_m2 / city_area * 100
 stats
 ```
 
+Finally, we can identify the areas where access to parks is more difficult
+(distances greater than 1,000 m). We can do this by subtracting two vector
+layers using the `erase()` function.
+
 ```{r}
-no_access = erase(aggregate(districts), buffers_1000)
+# vector layers difference
+bad_access = erase(aggregate(districts), buffers_1000)
 ```
 
 ```{r}
-expanse(no_access) / city_area * 100
+plot(districts, main = "Park Accessibility", col = "lightblue", border = NA,
+     legend = FALSE)
+plot(bad_access, col = "red", border = NA, add = TRUE)
+plot(districts, lwd = 2, add = TRUE)
+add_legend("topright", legend = c("<15 min", ">15 min"), pch = 15,
+           col = c("lightblue", "red"))
 ```
 
 ## Proximity Analysis
 
-```{r}
-pt = vect(cbind(21.007, 52.222), crs = "EPSG:4326")
-```
+Finally, let's find the nearest park located next to our faculty. The
+coordinates of our faculty are $X = 21.007$ (longitude) and $Y = 52.222$
+(latitude) in the geographic coordinate system (`EPSG:4326`).
+
+Let's create a point that represents these geographic coordinates. The simplest
+way is to create a matrix with two columns. The first column will represent
+longitude, and the second will represent latitude. Next, pass the matrix to
+the `vect()` function and define the coordinate system in the `crs` argument.
 
 ```{r}
-idx = nearby(pt, parks_clean, k = 1, centroids = TRUE)[, 2]
+# create point (SpatVector) from coordinates
+pt = cbind(21.007, 52.222)
+pt = vect(pt, crs = "EPSG:4326")
 ```
 
+To find the nearest park we will use the `nearby()` function, which searches
+for `k` nearest neighbors (default 1). The result is a matrix containing the
+indices of the nearest objects.
+
 ```{r}
+# find the nearest park
+idx = nearby(pt, parks_clean)[, 2]
+```
+
+Next, using the `distance()` function, we can calculate the distance between
+the faculty and this park. By default, the distance is returned in meters.
+
+```{r}
+# calculate distance
 distance(pt, parks_clean[idx, ], unit = "m")
 ```
 
+The distance between the faculty and the nearest park is 411 meters.
+
+In the documentation for the `nearby()` function, you may have noticed that
+for polygons, centroids are used by default for distance calculations.
+A centroid is the geometric center of a spatial object, represented as a single
+point. Therefore, the difference in distance to the boundary of the polygon
+and to its centroid will be different.
+
+The `centroids()` function is used to calculate centroids. Let’s find out where
+the centroid of the selected park is located.
+
 ```{r}
+# calculate centroids
 cent = centroids(parks_clean[idx, ])
 ```
 
 ```{r}
+plot(parks_clean[idx, ], main = "Park", legend = FALSE)
+plot(cent, add = TRUE, col = "blue", cex = 1.4)
+add_legend("topleft", legend = "Centroid", pch = 19, col = "blue")
+```
+
+We can determine the coordinates of spatial objects (including points) using
+the `crds()` function.
+
+```{r}
+# centroid coordinates
 crds(cent)
 ```
 
+## Reproject 
+
+We can transform (reproject) the coordinate system, which can be done using
+the `project()` function. Simply specify the target coordinate system,
+preferably by providing the EPSG code. A list of codes for specific areas
+based on the map can be found on the [CRS Explorer](https://crs-explorer.proj.org/)
+website. In our example, we will use the *Polish National Geodetic Coordinate
+System 1992* as the target coordinate system, whose code is `EPSG:2180`.
+
 ```{r}
-plot(aggregate(districts), legend = FALSE)
-plot(pt, add = TRUE, col = "red")
-plot(cent, add = TRUE, col = "darkgreen")
-add_legend("topright", legend = c("Park", "Faculty"), pch = 19,
-           col = c("darkgreen", "red"))
+# reproject CRS
+buffers_300_epsg2180 = project(buffers_300, "EPSG:2180")
 ```
+
+After the above transformation, the coordinates are now expressed in meters
+(they were previously in degrees). 
 
 ## Exporting Results
 
+Let's export the results to a vector file on the disk. The most common format
+is geopackage (`.gpkg`). The `writeVector()` function is needed to save the data.
+
 ```{r}
-# project()
-# writeVector()
+#| eval: false
+
+# save buffers to disk
+writeVector(buffers_300, "buffers_300.gpkg")
 ```
 
 # Exercise
 
 1. For each district, calculate its centroid. Then, for each centroid, find
 the nearest park and calculate the distances.
-
 
