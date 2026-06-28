@@ -32,7 +32,7 @@ You can download interactive notebooks (.qmd) and static documents (.html) from 
 1. Introduction
 2. [Raster data analysis](https://kadyb.github.io/user2026/02_raster_analysis.html)
 3. [Vector data analysis](https://kadyb.github.io/user2026/03_vector_analysis.html)
-4. Spatial data visualization
+4. [Spatial data visualization](https://kadyb.github.io/user2026/04_visualization.html)
 
 # Contact
 
