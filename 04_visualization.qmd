@@ -25,8 +25,8 @@ The `SpatRaster` and `SpatVector` classes have `plot()` methods for creating
 quick and simple visualizations. However, it is possible to create more
 advanced visualizations using the [tidyterra](https://dieghernan.github.io/tidyterra/)
 package, which provides seamless integration with the [ggplot2](https://ggplot2.tidyverse.org/)
-package. The purpose of this part of the workshop will be to prepare
-visualizations of raster and vector data.
+package. The purpose of this part of the workshop is to prepare visualizations
+of raster and vector data.
 
 # Visualization 
 
@@ -35,9 +35,9 @@ The two essential functions are:
 - `geom_spatraster()` for visualizing raster data.
 - `geom_spatvector()` for visualizing vector data.
 
-The remaining elements are identical to those in `ggplot2`. Therefore, from
-a technical perspective, the process of visualizing non-spatial and spatial
-data is similar in `ggplot2`.
+The remaining plot elements (e.g., scales, labels, themes) are identical to
+those in `ggplot2`. Therefore, from a technical perspective, the process of
+visualizing non-spatial and spatial data is similar in `ggplot2`.
 
 ## Raster Data
 
@@ -167,7 +167,8 @@ ggsave("NIR.png", p, width = 6, height = 4, units = "in")
 ### Load Data
 
 To visualize the vector data, we will again use layers representing districts
-and parks. In addition, let's calculate the area of each district in $km^2$.
+and parks. In addition, let's calculate the area of each district in square
+kilometers.
 
 ```{r}
 districts = vect("data/districts.gpkg")
@@ -184,22 +185,23 @@ Let's display the calculated areas of the districts on a choropleth map. The
 procedure is similar to that for visualizing raster data, except that in this
 case we need to use the `geom_spatvector()` function to visualize vector data.
 We also need to specify the variable (column) we want to present on the map by
-defining `aes`.
+defining it inside `aes()`.
 
 ```{r}
 ggplot() +
   geom_spatvector(data = districts, aes(fill = area_km2), color = "white") +
   scale_fill_gradient(low = "grey", high = "brown") +
-  labs(title = "Area of districts in Warsaw", fill = expression("Area [m"^2*"]")) +
+  labs(title = "Area of districts in Warsaw", fill = expression("Area [km"^2*"]")) +
   theme_minimal() +
   theme(
     plot.title = element_text(face = "bold", hjust = 0.5)
   )
 ```
 
-### Combining layers
+### Combining Layers
 
-Raster and vector layers can be overlaid.
+Raster and vector layers can be overlaid. As an example, we will combine two
+vector layers, but raster layers can be handled in the same way.
 
 ```{r}
 ggplot() +
@@ -212,13 +214,16 @@ ggplot() +
   )
 ```
 
-### Reproject 
+### Reprojecting 
 
 As we have already stated, our vector data is in a geographic coordinate system
-(`EPSG:4326`) and is expressed in degrees. We can change the coordinate reference
-system to a different one by using the `coord_sf()` function (from `ggplot2`)
-and defining the `crs` argument with the target coordinate system and the `datum`
-argument with the grid's coordinate system.
+(`EPSG:4326`) and is expressed in degrees. We can project the map for display
+purposes ("on the fly") using the `coord_sf()` function (from `ggplot2`).
+The `crs` argument defines the target coordinate reference system, while the
+`datum` argument specifies the coordinate system for the grid lines and axis
+labels. We can display the coordinates on our map in meters (rather than degrees)
+by setting the coordinate system to `EPSG:2180`, which is the local coordinate
+system for Poland.
 
 ```{r}
 ggplot() +
@@ -234,7 +239,7 @@ ggplot() +
 
 # Exercise
 
-1. Create visualizations of Warsaw’s districts with tidyterra. Use the RGB
-composite as the base map. Include the scale and a north arrow. Save the
+1. Create a visualization of Warsaw’s districts with `tidyterra`. Use the RGB
+composition as the base map. Include the scale and a north arrow. Save the
 image to disk with the `png` extension.
 
