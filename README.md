@@ -20,7 +20,7 @@ and projects.
 You need to install [R](https://cloud.r-project.org/), [RStudio](https://posit.co/download/rstudio-desktop/) (preferably), and the required packages as follows:
 
 ```r
-install.packages("terra")
+install.packages(c("terra", "ggplot2", "tidyterra", "ggspatial"))
 ```
 
 Please make sure everything is working properly before the workshop begins.
