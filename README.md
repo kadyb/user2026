@@ -34,6 +34,8 @@ You can download interactive notebooks (.qmd) and static documents (.html) from 
 3. [Vector data analysis](https://kadyb.github.io/user2026/03_vector_analysis.html)
 4. [Spatial data visualization](https://kadyb.github.io/user2026/04_visualization.html)
 
+The solutions to the exercises can be found in `05_exercise_solutions.R`.
+
 # Contact
 
 If you have any questions or need help, please email me at krzysztof.dyba@amu.edu.pl.
